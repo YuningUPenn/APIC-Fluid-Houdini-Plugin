@@ -1,0 +1,24 @@
+# Build output
+build/
+
+# Compiled binaries
+*.dll
+*.lib
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.exp
+
+# Visual Studio
+.vs/
+*.user
+
+# Houdini cache
+config/
+*.hipnc
+*.hip
+
+# OS
+Thumbs.db
+.DS_Store

@@ -1,0 +1,15 @@
+#pragma once
+#include "Core"
+namespace Eigen {
+template<typename S> struct Triplet{int r,c;S v;Triplet(int r,int c,S v):r(r),c(c),v(v){}};
+template<typename S> struct SparseMatrix{
+    int rows_,cols_;
+    std::vector<Triplet<S>> data_;
+    SparseMatrix(int r=0,int c=0):rows_(r),cols_(c){}
+    void setFromTriplets(typename std::vector<Triplet<S>>::iterator,
+                         typename std::vector<Triplet<S>>::iterator){}
+    void makeCompressed(){}
+};
+static const int Lower=1,Upper=2;
+template<typename S,int R=-1,int C=1> using VectorX = Matrix<S,(R<0?1:R),(C<0?1:C)>;
+}

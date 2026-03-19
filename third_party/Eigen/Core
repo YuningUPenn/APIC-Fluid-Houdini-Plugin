@@ -1,0 +1,62 @@
+#pragma once
+#include <cmath>
+#include <algorithm>
+#include <vector>
+#include <initializer_list>
+#include <limits>
+namespace Eigen {
+template<typename S, int R, int C> struct Matrix {
+    S data[R*C]={};
+    // Element access — both () and []
+    S& operator()(int r,int c){return data[r*C+c];}
+    S  operator()(int r,int c)const{return data[r*C+c];}
+    S& operator()(int i){return data[i];}         // vector access
+    S  operator()(int i)const{return data[i];}
+    S& operator[](int i){return data[i];}
+    S  operator[](int i)const{return data[i];}
+    S& x(){return data[0];} S& y(){return data[1];} S& z(){return data[2];}
+    S  x()const{return data[0];} S  y()const{return data[1];} S  z()const{return data[2];}
+    // Arithmetic
+    Matrix operator+(const Matrix& o)const{Matrix r;for(int i=0;i<R*C;i++)r.data[i]=data[i]+o.data[i];return r;}
+    Matrix operator-(const Matrix& o)const{Matrix r;for(int i=0;i<R*C;i++)r.data[i]=data[i]-o.data[i];return r;}
+    Matrix operator*(S s)const{Matrix r;for(int i=0;i<R*C;i++)r.data[i]=data[i]*s;return r;}
+    Matrix operator/(S s)const{Matrix r;for(int i=0;i<R*C;i++)r.data[i]=data[i]/s;return r;}
+    Matrix operator-()const{Matrix r;for(int i=0;i<R*C;i++)r.data[i]=-data[i];return r;}
+    Matrix& operator+=(const Matrix& o){for(int i=0;i<R*C;i++)data[i]+=o.data[i];return*this;}
+    Matrix& operator-=(const Matrix& o){for(int i=0;i<R*C;i++)data[i]-=o.data[i];return*this;}
+    Matrix& operator*=(S s){for(int i=0;i<R*C;i++)data[i]*=s;return*this;}
+    Matrix& operator/=(S s){for(int i=0;i<R*C;i++)data[i]/=s;return*this;}
+    friend Matrix operator*(S s,const Matrix& m){return m*s;}
+    // Linear algebra
+    S dot(const Matrix& o)const{S s=0;for(int i=0;i<R*C;i++)s+=data[i]*o.data[i];return s;}
+    S squaredNorm()const{return dot(*this);}
+    S norm()const{return(S)std::sqrt((double)squaredNorm());}
+    Matrix normalized()const{S n=norm();if(n>1e-10f)return*this/n;return*this;}
+    Matrix& normalize(){*this=normalized();return*this;}
+    Matrix cross(const Matrix& o)const{
+        Matrix r;
+        r.data[0]=data[1]*o.data[2]-data[2]*o.data[1];
+        r.data[1]=data[2]*o.data[0]-data[0]*o.data[2];
+        r.data[2]=data[0]*o.data[1]-data[1]*o.data[0];
+        return r;}
+    Matrix<S,C,R> transpose()const{
+        Matrix<S,C,R> r;
+        for(int i=0;i<R;i++)for(int j=0;j<C;j++)r(j,i)=(*this)(i,j);
+        return r;}
+    template<int K> Matrix<S,R,K> operator*(const Matrix<S,C,K>& o)const{
+        Matrix<S,R,K> r=Matrix<S,R,K>::Zero();
+        for(int i=0;i<R;i++)for(int j=0;j<K;j++)for(int k=0;k<C;k++)r(i,j)+=(*this)(i,k)*o(k,j);
+        return r;}
+    static Matrix Zero(){return Matrix{};}
+    static Matrix Constant(S v){Matrix m;for(int i=0;i<R*C;i++)m.data[i]=v;return m;}
+    static Matrix Identity(){Matrix m;for(int i=0;i<R&&i<C;i++)m(i,i)=(S)1;return m;}
+    void setZero(){for(int i=0;i<R*C;i++)data[i]=(S)0;}
+};
+// Factory helpers used widely in the code
+template<typename S> inline Matrix<S,3,1> make_vec3(S x,S y,S z){
+    Matrix<S,3,1> v; v.x()=x; v.y()=y; v.z()=z; return v;}
+template<typename S> inline Matrix<S,3,1> make_vec3i(int x,int y,int z){
+    Matrix<S,3,1> v; v[0]=(S)x; v[1]=(S)y; v[2]=(S)z; return v;}
+// Dynamic placeholder
+static const int Dynamic = -1;
+}

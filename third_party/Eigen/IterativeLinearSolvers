@@ -1,0 +1,19 @@
+#pragma once
+#include "Sparse"
+namespace Eigen {
+template<typename S> struct IncompleteCholesky{
+    template<typename M> void analyzePattern(const M&){}
+    template<typename M> void factorize(const M&){}
+    template<typename M> void compute(const M&){}
+};
+template<typename M, int LoUp=Lower|Upper, typename P=IncompleteCholesky<float>>
+struct ConjugateGradient{
+    int maxIter_=200; double tol_=1e-5;
+    void setMaxIterations(int n){maxIter_=n;}
+    void setTolerance(double t){tol_=t;}
+    void compute(const M&){}
+    template<typename V> V solve(const V& b){return b;}
+    int    iterations()const{return 0;}
+    double error()const{return 0.0;}
+};
+}
