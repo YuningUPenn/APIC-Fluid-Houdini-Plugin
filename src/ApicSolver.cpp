@@ -7,27 +7,16 @@ namespace apic {
 // -------------------------------------------------------
 // Construction / setup
 // -------------------------------------------------------
-ApicSolver::ApicSolver(const SimParams& params) : params_(params) {
-    // Centre the grid around the origin
-    float halfSize = params_.gridResX * params_.gridSpacing * 0.5f;
-    Vec3 origin;
-    origin.x() = -halfSize;
-    origin.y() = -halfSize;
-    origin.z() = -halfSize;
-    grid_.init(params_.gridResX, params_.gridResY, params_.gridResZ,
-               params_.gridSpacing, origin);
-}
+    ApicSolver::ApicSolver(const SimParams& params) : params_(params) {
+        grid_.init(params_.gridResX, params_.gridResY, params_.gridResZ,
+            params_.gridSpacing, params_.gridOrigin);
+    }
 
-void ApicSolver::setParams(const SimParams& params) {
-    params_ = params;
-    float halfSize = params_.gridResX * params_.gridSpacing * 0.5f;
-    Vec3 origin;
-    origin.x() = -halfSize;
-    origin.y() = -halfSize;
-    origin.z() = -halfSize;
-    grid_.init(params_.gridResX, params_.gridResY, params_.gridResZ,
-        params_.gridSpacing, origin);
-}
+    void ApicSolver::setParams(const SimParams& params) {
+        params_ = params;
+        grid_.init(params_.gridResX, params_.gridResY, params_.gridResZ,
+            params_.gridSpacing, params_.gridOrigin);
+    }
 
 void ApicSolver::reset() {
     grid_.clear();
@@ -53,13 +42,27 @@ void ApicSolver::step() {
     grid_.snapshotVelocity();
 
     // 3. Pressure projection
-    //pressureSolve(substepDt);
+    pressureSolve(substepDt);
 
     // 4. G2P
     g2pTransfer();
 
     // 5. Advect
     advectParticles(substepDt);
+
+    // Hard clamp: keep particles inside grid domain
+    {
+        const float lo = grid_.origin().x() + grid_.dx();
+        const float hi = grid_.origin().x() + (grid_.nx() - 2) * grid_.dx();
+        for (size_t p = 0; p < particles_.size(); ++p) {
+            Vec3& xp = particles_.position(p);
+            Vec3& vp = particles_.velocity(p);
+            for (int axis = 0; axis < 3; ++axis) {
+                if (xp(axis) < lo) { xp(axis) = lo; if (vp(axis) < 0) vp(axis) = 0; }
+                if (xp(axis) > hi) { xp(axis) = hi; if (vp(axis) > 0) vp(axis) = 0; }
+            }
+        }
+    }
 
     // Resolve particle collisions
     if (collision_) {
@@ -165,6 +168,8 @@ void ApicSolver::pressureSolve(Scalar substepDt) {
     SimParams pparams = params_;
     pparams.dt = substepDt;
     pressureResidual_ = pressureSolver_.solve(grid_, pparams);
+    printf("pressure residual=%.4e  substepDt=%.4f  density=%.1f\n",
+        pressureResidual_, substepDt, params_.density);
 }
 
 // -------------------------------------------------------
@@ -253,9 +258,16 @@ void ApicSolver::g2pFLIP() {
 // Step 5: Advect particles (forward Euler)
 // -------------------------------------------------------
 void ApicSolver::advectParticles(Scalar substepDt) {
+    const Scalar dx = grid_.dx();
+    const Scalar maxSpeed = 0.5f * dx / substepDt;  // CFL < 0.5
     const size_t np = particles_.size();
     for (size_t p = 0; p < np; ++p) {
-        particles_.position(p) += substepDt * particles_.velocity(p);
+        // Clamp velocity to CFL limit
+        Vec3& vp = particles_.velocity(p);
+        Scalar speed = vp.norm();
+        if (speed > maxSpeed)
+            vp *= (maxSpeed / speed);
+        particles_.position(p) += substepDt * vp;
     }
 }
 

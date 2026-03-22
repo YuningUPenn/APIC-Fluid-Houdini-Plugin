@@ -92,19 +92,6 @@ void CollisionHandler::resolveParticleCollisions(ApicParticleSet& particles,
         Vec3& xp = particles.position(p);
         Vec3& vp = particles.velocity(p);
 
-        // Domain boundary — use grid origin and size from params
-        Vec3 lo, hi;
-        lo.x() = lo.y() = lo.z() = -static_cast<float>(params.gridResX) * dx * 0.5f + dx;
-        hi.x() = hi.y() = hi.z() = static_cast<float>(params.gridResX) * dx * 0.5f - dx;
-
-        for (int axis = 0; axis < 3; ++axis) {
-            Scalar pv = xp(axis);
-            Scalar lv = lo(axis);
-            Scalar hv = hi(axis);
-            if (pv < lv) { xp(axis) = lv; if (vp(axis) < 0.f) vp(axis) = 0.f; }
-            if (pv > hv) { xp(axis) = hv; if (vp(axis) > 0.f) vp(axis) = 0.f; }
-        }
-
         // SDF obstacles
         for (const auto& sdf : obstacles_) {
             Scalar d = sdf(xp);

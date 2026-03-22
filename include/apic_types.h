@@ -43,6 +43,7 @@ struct SimParams {
     int   gridResY     = 64;
     int   gridResZ     = 64;
     Scalar gridSpacing = 0.05f;   // world-space cell width (dx)
+    Vec3 gridOrigin = Vec3::Zero();  // 默认从原点开始，测试用这个
 
     // Timing
     Scalar dt          = 1.0f / 24.0f;

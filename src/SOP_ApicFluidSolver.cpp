@@ -148,8 +148,10 @@ apic::SimParams SOP_ApicFluidSolver::readParams(fpreal t) const {
     p.particleSeparation = static_cast<float>(evalFloat(PARM_PARTICLE_SEP, 0, t));
     p.timeScale          = static_cast<float>(evalFloat(PARM_TIME_SCALE,   0, t));
     p.substeps           = evalInt(PARM_SUBSTEPS, 0, t);
+    p.gridSpacing = p.particleSeparation * 2.0f;
     p.gridResX = p.gridResY = p.gridResZ = evalInt(PARM_GRID_RES, 0, t);
-    p.gridSpacing = p.particleSeparation;
+    float halfSize = static_cast<float>(p.gridResX) * p.gridSpacing * 0.5f;
+    p.gridOrigin = apic::vec3(-halfSize, -halfSize, -halfSize);
 
     switch (evalInt(PARM_TRANSFER_METHOD, 0, t)) {
         case 0:  p.method = apic::TransferMethod::APIC;   break;
@@ -237,15 +239,9 @@ void SOP_ApicFluidSolver::writeParticles(GU_Detail* dst) {
 }
 
 void SOP_ApicFluidSolver::buildCollisionSDF(const GU_Detail* /*collGeo*/) {
-    const float halfSize = static_cast<float>(
-        solver_->grid().nx() * solver_->grid().dx() * 0.5f
-        );
-    apic::Vec3 minPt, maxPt;
-    minPt.x() = minPt.y() = minPt.z() = -halfSize;
-    maxPt.x() = maxPt.y() = maxPt.z() = halfSize;
-    collision_->addObstacle(
-        apic::CollisionHandler::makeBoxSDF(minPt, maxPt)
-    );
+    // Domain boundary is handled by ApicGrid::markBoundary() (solid_ flags).
+    // No SDF obstacle needed for the basic box domain.
+    // Future: add internal obstacles here from collGeo VDB.
 }
 
 // -------------------------------------------------------
