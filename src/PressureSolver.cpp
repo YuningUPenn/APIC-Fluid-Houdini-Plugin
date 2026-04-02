@@ -110,23 +110,27 @@ Scalar PressureSolver::solvePCG(ApicGrid& grid, const SimParams& params,
     for (int fi = 0; fi < nFluid; ++fi) {
         int flat = fluidToFlat[fi];
         int gk=flat/(nx*ny), rem=flat%(nx*ny), gj=rem/nx, gi=rem%nx;
-        int numFluidNeighbours = 0;
+        int numNonSolidNeighbours = 0;  // counts both fluid AND air neighbors
 
         for (const auto& o : OFF6) {
             int ni=gi+o[0], nj=gj+o[1], nk=gk+o[2];
             if (!grid.inside(ni,nj,nk)||grid.solid(ni,nj,nk)) continue;
+            ++numNonSolidNeighbours;  // count ALL non-solid (fluid + air)
             int nflat=grid.idx(ni,nj,nk);
             int nfi=flatToFluid[nflat];
             if (nfi >= 0) {
+                // Fluid neighbor: off-diagonal entry
                 triplets.emplace_back(fi, nfi, -1.f/dx2);
-                ++numFluidNeighbours;
             }
+            // Air neighbor (nfi < 0): Dirichlet p_air=0
+            // contributes 1/dx2 to diagonal (already counted via numNonSolidNeighbours)
+            // but NOT to rhs (since p_air=0, rhs contribution = 0)
         }
-        if (numFluidNeighbours == 0)
+        if (numNonSolidNeighbours == 0)
             triplets.emplace_back(fi, fi, 1.f);
         else
             triplets.emplace_back(fi, fi,
-                static_cast<Scalar>(numFluidNeighbours)/dx2);
+                static_cast<Scalar>(numNonSolidNeighbours)/dx2);
 
         // A*p = -(rho/dt)*div  =>  rhs = -scale * div
         // (derived from: div_new = div - (dt/rho)*A*p = 0  =>  A*p = -(rho/dt)*div)
@@ -142,18 +146,13 @@ Scalar PressureSolver::solvePCG(ApicGrid& grid, const SimParams& params,
     for (int i=0;i<nFluid;++i) rhs_e(i)=rhs[i];
     p_e.setZero();
 
-    // Pin p[0]=0 to remove the null space (constant pressure mode).
-    // This is valid for MAC: backward-div / forward-grad pair has full rank
-    // except for the global constant, which doesn't affect velocities.
+    // Neumann compatibility: subtract mean so CG converges.
+    // Constant pressure shift does not affect velocity gradients.
     {
-        std::vector<Eigen::Triplet<Scalar>> pt;
-        pt.reserve(triplets.size());
-        for (const auto& t : triplets)
-            if (t.row()!=0 && t.col()!=0) pt.push_back(t);
-        pt.emplace_back(0,0,1.f);
-        A.setFromTriplets(pt.begin(), pt.end());
-        A.makeCompressed();
-        rhs_e(0) = 0.f;
+        Scalar mean = 0.f;
+        for (int i=0;i<nFluid;++i) mean += rhs_e(i);
+        mean /= nFluid;
+        for (int i=0;i<nFluid;++i) rhs_e(i) -= mean;
     }
 
     Eigen::ConjugateGradient<SpMat, Eigen::Lower|Eigen::Upper,
@@ -198,9 +197,11 @@ Scalar PressureSolver::solveJacobi(ApicGrid& grid, const SimParams& params,
             for (const auto& o : OFF6) {
                 int ni=gi+o[0], nj=gj+o[1], nk=gk+o[2];
                 if (!grid.inside(ni,nj,nk)||grid.solid(ni,nj,nk)) continue;
+                ++cnt;  // count ALL non-solid neighbors (fluid + air)
                 int nflat=grid.idx(ni,nj,nk);
                 int nfi=flatToFluid[nflat];
-                if (nfi>=0) { sum+=grid.pressure(nflat); ++cnt; }
+                if (nfi>=0) sum+=grid.pressure(nflat);
+                // air neighbor: p=0, contributes 0 to sum
             }
             if (cnt==0) { pNew[fi]=0.f; continue; }
             // A*p = -scale*div  =>  cnt*p[i]/dx2 - sum/dx2 = -scale*div
