@@ -1,14 +1,12 @@
-// test_angular_momentum.cpp
-// Tests that APIC preserves angular momentum better than PIC.
+// test_angular_momentum.cpp  (MAC grid version)
 //
-// Key insight: APIC's advantage comes from the B matrix carrying
-// velocity gradient info. To test this properly, we must run TWO
-// full P2G->G2P cycles so B is populated before the second P2G.
-// With B=0 (initial state), APIC and PIC are identical.
+// Tests angular momentum preservation for APIC vs PIC
+// using MAC face-based transfers.
 
 #include "ApicSolver.h"
 #include <cstdio>
 #include <cmath>
+#include <vector>
 
 using namespace apic;
 static constexpr float PI = 3.14159265f;
@@ -19,14 +17,15 @@ int main() {
     SimParams params;
     params.gridResX = params.gridResY = params.gridResZ = 32;
     params.gridSpacing = 1.0f / 32.0f;
-    params.dt          = 1.0f / 24.0f;
-    params.substeps    = 1;
-    params.gravity     = Vec3::Zero();
+    params.dt = 1.0f / 24.0f;
+    params.substeps = 1;
+    params.gravity = Vec3::Zero();
+    params.viscosity = 0.f;  // no damping for conservation test
 
-    const Scalar dx    = params.gridSpacing;
-    const Scalar cx    = 0.5f, cy = 0.5f;
-    const Scalar r     = 0.25f;
-    const int    N     = 32;
+    const Scalar dx = params.gridSpacing;
+    const Scalar cx = 0.5f, cy = 0.5f;
+    const Scalar r = 0.25f;
+    const int    N = 64;
     const Scalar omega = 2.0f * PI;
 
     auto runTest = [&](TransferMethod method, const char* name) -> Scalar {
@@ -35,72 +34,82 @@ int main() {
         ApicParticleSet& P = solver.particles();
         ApicGrid& G = solver.grid();
 
-        // Place particles in solid-body rotation
+        // Init: rigid-body rotation in XY plane
         for (int n = 0; n < N; ++n) {
             Scalar theta = 2.0f * PI * n / N;
-            Vec3 pos = vec3(cx + r * std::cos(theta),
-                            cy + r * std::sin(theta), 0.5f);
-            Vec3 vel = vec3(-omega * r * std::sin(theta),
-                             omega * r * std::cos(theta), 0.f);
+            Vec3 pos = vec3(cx + r*std::cos(theta), cy + r*std::sin(theta), 0.5f);
+            Vec3 vel = vec3(-omega*r*std::sin(theta), omega*r*std::cos(theta), 0.f);
             P.addParticle(pos, vel, 1.f);
         }
 
-        // Helper: one manual P2G -> G2P round-trip
+        std::vector<ApicGrid::WeightEntry> wts;
+
         auto doRoundTrip = [&]() {
-            // P2G
+            // P2G (MAC)
             G.clear();
-            const Scalar Dp_inv = 4.0f / (dx * dx);
-            std::vector<ApicGrid::WeightEntry> wts;
             for (size_t p = 0; p < P.size(); ++p) {
-                G.gatherWeights(P.position(p), wts);
-                for (const auto& we : wts) {
-                    Vec3 contrib = P.velocity(p);
-                    if (method == TransferMethod::APIC)
-                        contrib += P.affineB(p) * (Dp_inv * we.offset);
-                    G.mass(we.flatIdx)     += we.weight * P.mass(p);
-                    G.velocity(we.flatIdx) += we.weight * P.mass(p) * contrib;
+                const Vec3&  xp = P.position(p);
+                const Vec3&  vp = P.velocity(p);
+                const Scalar mp = P.mass(p);
+                const Mat3&  Cp = P.affineB(p);
+
+                for (int axis = 0; axis < 3; ++axis) {
+                    G.gatherWeightsFace(xp, axis, wts);
+                    auto& faceVel  = (axis==0)?G.uFaceVelArr():(axis==1)?G.vFaceVelArr():G.wFaceVelArr();
+                    auto& faceMass = (axis==0)?G.uFaceMassArr():(axis==1)?G.vFaceMassArr():G.wFaceMassArr();
+                    for (const auto& we : wts) {
+                        Scalar affine = (method == TransferMethod::APIC)
+                                        ? Cp.col(axis).dot(we.offset) : 0.f;
+                        faceMass[we.flatIdx] += we.weight * mp;
+                        faceVel [we.flatIdx] += we.weight * mp * (vp(axis) + affine);
+                    }
                 }
             }
-            G.normaliseMomentum();
+            G.normaliseFaceMomentum();
 
-            // G2P
+            // G2P (MAC)
             for (size_t p = 0; p < P.size(); ++p) {
-                G.gatherWeights(P.position(p), wts);
+                const Vec3& xp = P.position(p);
                 Vec3 vNew = Vec3::Zero();
-                Mat3 Bnew = Mat3::Zero();
-                for (const auto& we : wts) {
-                    vNew += we.weight * G.velocity(we.flatIdx);
-                    if (method == TransferMethod::APIC)
-                        Bnew += we.weight * G.velocity(we.flatIdx)
-                                * we.offset.transpose();
+                Mat3 Cnew = Mat3::Zero();
+
+                for (int axis = 0; axis < 3; ++axis) {
+                    G.gatherWeightsFace(xp, axis, wts);
+                    const auto& faceVel = (axis==0)?G.uFaceVelArr():(axis==1)?G.vFaceVelArr():G.wFaceVelArr();
+                    for (const auto& we : wts) {
+                        Scalar fv = faceVel[we.flatIdx];
+                        vNew(axis) += we.weight * fv;
+                        if (method == TransferMethod::APIC)
+                            Cnew.col(axis) += we.gradient * fv;
+                    }
                 }
                 P.velocity(p) = vNew;
-                P.affineB(p)  = Bnew;
+                if (method == TransferMethod::APIC)
+                    P.affineB(p) = Cnew;
+                else
+                    P.affineB(p).setZero();
             }
         };
 
-        // Measure L before
+        // Angular momentum (z-component)
         auto angMom = [&]() {
             Scalar L = 0.f;
             for (size_t p = 0; p < P.size(); ++p) {
                 Vec3 rv = P.position(p) - vec3(cx, cy, 0.5f);
-                L += P.mass(p) * (rv.x() * P.velocity(p).y()
-                                - rv.y() * P.velocity(p).x());
+                L += P.mass(p)*(rv.x()*P.velocity(p).y() - rv.y()*P.velocity(p).x());
             }
             return L;
         };
 
         Scalar L0 = angMom();
 
-        // Round-trip 1: populates B for APIC
-        doRoundTrip();
-        // Round-trip 2: now APIC uses the populated B -- this is where
-        // the difference between APIC and PIC becomes visible
-        doRoundTrip();
+        const int steps = 20;
+        for (int i = 0; i < steps; ++i)
+            doRoundTrip();
 
-        Scalar L2 = angMom();
-        Scalar relError = std::abs(L2 - L0) / (std::abs(L0) + 1e-8f);
-        printf("[%s] L0=%.5f  L2=%.5f  rel_error=%.5f\n", name, L0, L2, relError);
+        Scalar Lf = angMom();
+        Scalar relError = std::abs(Lf - L0) / (std::abs(L0) + 1e-8f);
+        printf("[%s] L0=%.5f  Lf=%.5f  rel_error=%.5e\n", name, L0, Lf, relError);
         return relError;
     };
 
@@ -108,21 +117,17 @@ int main() {
     Scalar picErr  = runTest(TransferMethod::PIC,  "PIC ");
 
     printf("\n=== Angular Momentum Preservation Test ===\n");
-
     if (apicErr > 1e-2f) {
-        printf("FAIL: APIC angular momentum error too large (%.5f)\n", apicErr);
+        printf("FAIL: APIC angular momentum error too large (%.5e)\n", apicErr);
         ++failures;
     } else {
-        printf("PASS: APIC preserves angular momentum (error=%.5f)\n", apicErr);
+        printf("PASS: APIC preserves angular momentum (error=%.5e)\n", apicErr);
     }
 
-    if (apicErr < picErr) {
-        printf("PASS: APIC (%.5f) better than PIC (%.5f) as expected\n",
-               apicErr, picErr);
-    } else {
-        printf("NOTE: APIC (%.5f) not better than PIC (%.5f) after 2 cycles\n",
-               apicErr, picErr);
-    }
+    if (apicErr < picErr)
+        printf("PASS: APIC (%.5e) better than PIC (%.5e)\n", apicErr, picErr);
+    else
+        printf("WARNING: APIC not better than PIC\n");
 
     return failures > 0 ? 1 : 0;
 }
