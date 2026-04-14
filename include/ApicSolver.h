@@ -38,6 +38,7 @@ public:
     ApicParticleSet&  particles() { return particles_; }
     const ApicGrid&   grid()      const { return grid_; }
     const ApicParticleSet& particles() const { return particles_; }
+    const SimParams& params() const { return params_; }
 
     // ---- Main API ----
     // Advance simulation by one substep (dt = params.dt / params.substeps)
@@ -53,6 +54,7 @@ public:
     Scalar lastPressureResidual() const { return pressureResidual_; }
     Scalar totalKineticEnergy() const;
     Vec3   totalAngularMomentum() const;
+    
 
 private:
     // ---- Simulation sub-steps ----
