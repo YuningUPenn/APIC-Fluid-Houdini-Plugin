@@ -1,6 +1,8 @@
 #include "CollisionHandler.h"
 #include <algorithm>
 #include <cmath>
+#include <limits>
+#include <utility>
 
 namespace apic {
 
@@ -35,10 +37,48 @@ void CollisionHandler::markSolidNodes(ApicGrid& grid) const {
 // SDF obstacle support is deferred (future work).
 // -------------------------------------------------------
 void CollisionHandler::enforceGridBoundary(ApicGrid& grid,
-                                            const SimParams& /*params*/) const {
-    // Domain walls: handled by grid.enforceBoundaryFaces()
-    // which is called from normaliseFaceMomentum() and gridUpdate().
-    // SDF obstacles would zero face velocities between solid and fluid nodes here.
+    const SimParams& /*params*/) const {
+
+    // u-faces lie between node (i,j,k) and (i+1,j,k)
+    for (int k = 0; k < grid.nUz(); ++k) {
+        for (int j = 0; j < grid.nUy(); ++j) {
+            for (int i = 0; i < grid.nUx(); ++i) {
+                const int n0 = grid.idx(i, j, k);
+                const int n1 = grid.idx(i + 1, j, k);
+                if (grid.solid(n0) || grid.solid(n1)) {
+                    grid.uFaceVel(i, j, k) = 0.f;
+                }
+            }
+        }
+    }
+
+    // v-faces lie between node (i,j,k) and (i,j+1,k)
+    for (int k = 0; k < grid.nVz(); ++k) {
+        for (int j = 0; j < grid.nVy(); ++j) {
+            for (int i = 0; i < grid.nVx(); ++i) {
+                const int n0 = grid.idx(i, j, k);
+                const int n1 = grid.idx(i, j + 1, k);
+                if (grid.solid(n0) || grid.solid(n1)) {
+                    grid.vFaceVel(i, j, k) = 0.f;
+                }
+            }
+        }
+    }
+
+    // w-faces lie between node (i,j,k) and (i,j,k+1)
+    for (int k = 0; k < grid.nWz(); ++k) {
+        for (int j = 0; j < grid.nWy(); ++j) {
+            for (int i = 0; i < grid.nWx(); ++i) {
+                const int n0 = grid.idx(i, j, k);
+                const int n1 = grid.idx(i, j, k + 1);
+                if (grid.solid(n0) || grid.solid(n1)) {
+                    grid.wFaceVel(i, j, k) = 0.f;
+                }
+            }
+        }
+    }
+
+    // Also keep the outer domain walls enforced
     grid.enforceBoundaryFaces();
 }
 
@@ -46,8 +86,11 @@ void CollisionHandler::enforceGridBoundary(ApicGrid& grid,
 // Resolve particle-solid collisions
 // -------------------------------------------------------
 void CollisionHandler::resolveParticleCollisions(ApicParticleSet& particles,
-                                                   const SimParams& params) const {
+    const SimParams& params) const {
+    if (obstacles_.empty()) return;
+
     const Scalar dx = params.gridSpacing;
+    const Scalar eps = std::max(dx * 0.01f, 1e-4f);
     const size_t np = particles.size();
 
     for (size_t p = 0; p < np; ++p) {
@@ -55,21 +98,43 @@ void CollisionHandler::resolveParticleCollisions(ApicParticleSet& particles,
         Vec3& vp = particles.velocity(p);
 
         for (const auto& sdf : obstacles_) {
-            Scalar d = sdf(xp);
+            const Scalar d = sdf(xp);
             if (d < 0.f) {
-                Vec3 n;
-                {Vec3 e=Vec3::Zero(); e.x()=dx*0.01f;
-                 n.x() = sdf(xp+e) - sdf(xp-e);}
-                {Vec3 e=Vec3::Zero(); e.y()=dx*0.01f;
-                 n.y() = sdf(xp+e) - sdf(xp-e);}
-                {Vec3 e=Vec3::Zero(); e.z()=dx*0.01f;
-                 n.z() = sdf(xp+e) - sdf(xp-e);}
-                if (n.squaredNorm() > 1e-8f) n.normalize();
+                Vec3 n = Vec3::Zero();
+
+                {
+                    Vec3 e = Vec3::Zero();
+                    e.x() = eps;
+                    n.x() = sdf(xp + e) - sdf(xp - e);
+                }
+                {
+                    Vec3 e = Vec3::Zero();
+                    e.y() = eps;
+                    n.y() = sdf(xp + e) - sdf(xp - e);
+                }
+                {
+                    Vec3 e = Vec3::Zero();
+                    e.z() = eps;
+                    n.z() = sdf(xp + e) - sdf(xp - e);
+                }
+
+                const Scalar n2 = n.squaredNorm();
+                if (n2 > 1e-12f) {
+                    n /= std::sqrt(n2);
+                }
+                else {
+                    n = Vec3(0.f, 1.f, 0.f);
+                }
+
+                // Push particle out of obstacle
                 xp -= d * n;
-                Scalar vn = vp.dot(n);
+
+                // Remove inward normal velocity, keep tangential motion with friction
+                const Scalar vn = vp.dot(n);
                 if (vn < 0.f) {
-                    vp -= vn * n;
-                    vp *= (1.f - params.boundaryFriction);
+                    const Vec3 vNormal = vn * n;
+                    const Vec3 vTangent = vp - vNormal;
+                    vp = vTangent * (1.f - params.boundaryFriction);
                 }
             }
         }
@@ -77,16 +142,22 @@ void CollisionHandler::resolveParticleCollisions(ApicParticleSet& particles,
 }
 
 CollisionHandler::SDFFunc CollisionHandler::makeBoxSDF(const Vec3& minPt,
-                                                         const Vec3& maxPt) {
-    return [minPt, maxPt](const Vec3& p) -> Scalar {
-        Vec3 d;
-        for (int i = 0; i < 3; ++i) {
-            Scalar lo = p(i,0) - minPt(i,0);
-            Scalar hi = maxPt(i,0) - p(i,0);
-            d(i,0) = std::min(lo, hi);
-        }
-        return std::min({d.x(), d.y(), d.z()});
-    };
+    const Vec3& maxPt) {
+    const Vec3 center = Scalar(0.5f) * (minPt + maxPt);
+    const Vec3 halfExtent = Scalar(0.5f) * (maxPt - minPt);
+
+    return [center, halfExtent](const Vec3& p) -> Scalar {
+        const Vec3 q = (p - center).cwiseAbs() - halfExtent;
+        const Vec3 qMax = q.cwiseMax(Scalar(0));
+
+        const Scalar outsideDist = qMax.norm();
+        const Scalar insideDist = std::min(
+            std::max(q.x(), std::max(q.y(), q.z())),
+            Scalar(0)
+        );
+
+        return outsideDist + insideDist;
+        };
 }
 
 } // namespace apic

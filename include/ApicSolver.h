@@ -38,6 +38,7 @@ public:
     ApicParticleSet&  particles() { return particles_; }
     const ApicGrid&   grid()      const { return grid_; }
     const ApicParticleSet& particles() const { return particles_; }
+    const SimParams& params() const { return params_; }
 
     // ---- Main API ----
     // Advance simulation by one substep (dt = params.dt / params.substeps)
