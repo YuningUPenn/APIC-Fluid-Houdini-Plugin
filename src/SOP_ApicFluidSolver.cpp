@@ -236,7 +236,7 @@ void SOP_ApicFluidSolver::writeParticles(GU_Detail* dst) {
 
     // A good starting radius for meshing
     // You can tweak this multiplier later in Houdini if needed
-    const float particleRadius = 0.85f * static_cast<float>(solver_->params().particleSeparation);
+    const float particleRadius = 1.5f * static_cast<float>(solver_->params().particleSeparation);
 
     for (size_t p = 0; p < np; ++p) {
         GA_Offset ptoff = ptStart + static_cast<GA_Offset>(p);

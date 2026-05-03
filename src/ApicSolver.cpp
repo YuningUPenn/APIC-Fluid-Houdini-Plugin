@@ -214,14 +214,14 @@ void ApicSolver::pressureSolve(Scalar substepDt) {
         Scalar da = (u_r-u_l+v_t-v_b+w_f-w_k)*inv_dx;
         maxDivAfter=std::max(maxDivAfter, std::abs(da));
 
-        if (!printed) {
-            printf("  sample: divBefore=%.4f  p=%.4f\n",
-                grid_.divergence(flat), grid_.pressure(flat));
-            printed=true;
-        }
+        //if (!printed) {
+        //    printf("  sample: divBefore=%.4f  p=%.4f\n",
+        //        grid_.divergence(flat), grid_.pressure(flat));
+        //    printed=true;
+        //}
     }
-    printf("before=%.4f  after=%.4f  residual=%.2e  nFluid=%zu\n",
-        maxDivBefore, maxDivAfter, pressureResidual_, nFluid);
+    //printf("before=%.4f  after=%.4f  residual=%.2e  nFluid=%zu\n",
+    //    maxDivBefore, maxDivAfter, pressureResidual_, nFluid);
 }
 
 // -------------------------------------------------------

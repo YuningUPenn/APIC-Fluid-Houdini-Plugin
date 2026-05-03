@@ -205,3 +205,15 @@ Tests validate:
 
 See `APIC_Fluid_Design_Doc_v2_0.pdf` for the full design document and
 `2766996.pdf` for the original APIC paper.
+
+---
+
+## Final Version Update
+
+Here's a sample workflow for using the APIC SOP node:
+
+```
+Sphere (or any input mesh) -> VDB from Polygon (use fog VDB) -> Scatter -> APIC Fluid Solver -> VDB from particles (use voxel size 0.03) -> VDB smooth (with 3-5 iterations) -> Convert VDB (Convert to Polygons)
+```
+
+Collider can be added to the Solver, but in order to see the collider you need to merge the collider with the output of the workflow above.
