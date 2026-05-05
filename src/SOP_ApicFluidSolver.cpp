@@ -15,8 +15,7 @@ const char* SOP_ApicFluidSolver::PARM_PARTICLE_SEP = "particlesep";
 const char* SOP_ApicFluidSolver::PARM_TIME_SCALE = "timescale";
 const char* SOP_ApicFluidSolver::PARM_SUBSTEPS = "substeps";
 const char* SOP_ApicFluidSolver::PARM_TRANSFER_METHOD = "transfermethod";
-const char* SOP_ApicFluidSolver::PARM_VISCOSITY = "viscosity";
-const char* SOP_ApicFluidSolver::PARM_SURFACE_TENSION = "surfacetension";
+
 const char* SOP_ApicFluidSolver::PARM_GRAVITY = "gravity";
 const char* SOP_ApicFluidSolver::PARM_GRID_RES = "gridres";
 const char* SOP_ApicFluidSolver::PARM_SHOW_PARTICLES = "showparticles";
@@ -32,8 +31,7 @@ static PRM_Name prmParticleSep(SOP_ApicFluidSolver::PARM_PARTICLE_SEP, "Particle
 static PRM_Name prmTimeScale(SOP_ApicFluidSolver::PARM_TIME_SCALE, "Time Scale");
 static PRM_Name prmSubsteps(SOP_ApicFluidSolver::PARM_SUBSTEPS, "Substeps");
 static PRM_Name prmMethod(SOP_ApicFluidSolver::PARM_TRANSFER_METHOD, "Transfer Method");
-static PRM_Name prmViscosity(SOP_ApicFluidSolver::PARM_VISCOSITY, "Viscosity");
-static PRM_Name prmSurfTens(SOP_ApicFluidSolver::PARM_SURFACE_TENSION, "Surface Tension");
+
 static PRM_Name prmGravity(SOP_ApicFluidSolver::PARM_GRAVITY, "Gravity");
 static PRM_Name prmGridRes(SOP_ApicFluidSolver::PARM_GRID_RES, "Grid Resolution");
 static PRM_Name prmShowPart(SOP_ApicFluidSolver::PARM_SHOW_PARTICLES, "Show Particles");
@@ -45,8 +43,7 @@ static PRM_Name prmColorVel(SOP_ApicFluidSolver::PARM_COLOR_BY_VEL, "Color by Ve
 static PRM_Default defParticleSep(0.05);
 static PRM_Default defTimeScale(1.0);
 static PRM_Default defSubsteps(2);
-static PRM_Default defViscosity(0.01);
-static PRM_Default defSurfTens(0.0);
+
 static PRM_Default defGravity0(0);
 static PRM_Default defGravity1(-9.8);
 static PRM_Default defGravity2(0);
@@ -58,6 +55,16 @@ static PRM_Default defShowVec(0);
 static PRM_Default defColorVel(0);
 static PRM_Default defMethod(0);
 
+static PRM_Name transferMethodNames[] = {
+    PRM_Name("0", "APIC"),
+    PRM_Name("1", "FLIP"),
+    PRM_Name("2", "PIC"),
+    PRM_Name("3", "Hybrid"),
+    PRM_Name(nullptr)
+};
+
+static PRM_ChoiceList transferMethodMenu(PRM_CHOICELIST_SINGLE, transferMethodNames);
+
 // -------------------------------------------------------
 // Parameter template list
 // -------------------------------------------------------
@@ -66,9 +73,7 @@ PRM_Template SOP_ApicFluidSolver::myTemplateList[] = {
     PRM_Template(PRM_FLT_J, 1, &prmTimeScale,   &defTimeScale),
     PRM_Template(PRM_INT_J, 1, &prmSubsteps,    &defSubsteps),
     PRM_Template(PRM_INT_J, 1, &prmGridRes,     &defGridRes),
-    PRM_Template(PRM_INT_J, 1, &prmMethod,      &defMethod),
-    PRM_Template(PRM_FLT_J, 1, &prmViscosity,   &defViscosity),
-    PRM_Template(PRM_FLT_J, 1, &prmSurfTens,    &defSurfTens),
+    PRM_Template(PRM_ORD, 1, &prmMethod, &defMethod, &transferMethodMenu),
     PRM_Template(PRM_XYZ_J, 3, &prmGravity,      defGravity),
     PRM_Template(PRM_TOGGLE, 1, &prmShowPart,   &defShowPart),
     PRM_Template(PRM_TOGGLE, 1, &prmShowGrid,   &defShowGrid),
@@ -180,8 +185,8 @@ apic::SimParams SOP_ApicFluidSolver::readParams(fpreal t) const {
     default: p.method = apic::TransferMethod::Hybrid; break;
     }
 
-    p.viscosity = static_cast<float>(evalFloat(PARM_VISCOSITY, 0, t));
-    p.surfaceTension = static_cast<float>(evalFloat(PARM_SURFACE_TENSION, 0, t));
+    p.viscosity = 0.0f;
+    p.surfaceTension = 0.0f;
 
     p.gravity = apic::vec3(
         static_cast<float>(evalFloat(PARM_GRAVITY, 0, t)),

@@ -6,13 +6,11 @@
       "configurationType": "Release",
       "buildRoot": "${projectDir}\\build\\Release",
       "installRoot": "${projectDir}\\install",
-      "inheritEnvironments": [
-        "msvc_x64_x64"
-      ],
+      "inheritEnvironments": [ "msvc_x64_x64" ],
       "variables": [
         {
           "name": "HOUDINI_INSTALL_DIR",
-          "value": "D:/Houdini/Houdini 21.0.440",
+          "value": "C:/Program Files/Side Effects Software/Houdini 21.0.631",
           "type": "PATH"
         }
       ]
@@ -22,13 +20,11 @@
       "generator": "Ninja",
       "configurationType": "Debug",
       "buildRoot": "${projectDir}\\build\\Debug",
-      "inheritEnvironments": [
-        "msvc_x64_x64"
-      ],
+      "inheritEnvironments": [ "msvc_x64_x64" ],
       "variables": [
         {
           "name": "HOUDINI_INSTALL_DIR",
-          "value": "D:/Houdini/Houdini 21.0.440",
+          "value": "C:/Program Files/Side Effects Software/Houdini 21.0.631",
           "type": "PATH"
         }
       ]
