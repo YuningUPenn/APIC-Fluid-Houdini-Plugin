@@ -203,8 +203,7 @@ Tests validate:
 
 ## References
 
-See `APIC_Fluid_Design_Doc_v2_0.pdf` for the full design document and
-`2766996.pdf` for the original APIC paper.
+See `The Affine Particle-In-Cell Method` for the original APIC paper.
 
 ---
 

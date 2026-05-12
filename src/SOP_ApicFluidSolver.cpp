@@ -18,10 +18,6 @@ const char* SOP_ApicFluidSolver::PARM_TRANSFER_METHOD = "transfermethod";
 
 const char* SOP_ApicFluidSolver::PARM_GRAVITY = "gravity";
 const char* SOP_ApicFluidSolver::PARM_GRID_RES = "gridres";
-const char* SOP_ApicFluidSolver::PARM_SHOW_PARTICLES = "showparticles";
-const char* SOP_ApicFluidSolver::PARM_SHOW_GRID = "showgrid";
-const char* SOP_ApicFluidSolver::PARM_SHOW_VECTORS = "showvectors";
-const char* SOP_ApicFluidSolver::PARM_COLOR_BY_VEL = "colorbyvel";
 const char* SOP_ApicFluidSolver::theSOPTypeName = "apic_fluid_solver";
 
 // -------------------------------------------------------
@@ -34,10 +30,6 @@ static PRM_Name prmMethod(SOP_ApicFluidSolver::PARM_TRANSFER_METHOD, "Transfer M
 
 static PRM_Name prmGravity(SOP_ApicFluidSolver::PARM_GRAVITY, "Gravity");
 static PRM_Name prmGridRes(SOP_ApicFluidSolver::PARM_GRID_RES, "Grid Resolution");
-static PRM_Name prmShowPart(SOP_ApicFluidSolver::PARM_SHOW_PARTICLES, "Show Particles");
-static PRM_Name prmShowGrid(SOP_ApicFluidSolver::PARM_SHOW_GRID, "Show Grid");
-static PRM_Name prmShowVec(SOP_ApicFluidSolver::PARM_SHOW_VECTORS, "Show Vectors");
-static PRM_Name prmColorVel(SOP_ApicFluidSolver::PARM_COLOR_BY_VEL, "Color by Vel");
 
 // Default values
 static PRM_Default defParticleSep(0.05);
@@ -49,10 +41,6 @@ static PRM_Default defGravity1(-9.8);
 static PRM_Default defGravity2(0);
 static PRM_Default defGravity[3] = { defGravity0, defGravity1, defGravity2 };
 static PRM_Default defGridRes(64);
-static PRM_Default defShowPart(1);
-static PRM_Default defShowGrid(0);
-static PRM_Default defShowVec(0);
-static PRM_Default defColorVel(0);
 static PRM_Default defMethod(0);
 
 static PRM_Name transferMethodNames[] = {
@@ -75,10 +63,6 @@ PRM_Template SOP_ApicFluidSolver::myTemplateList[] = {
     PRM_Template(PRM_INT_J, 1, &prmGridRes,     &defGridRes),
     PRM_Template(PRM_ORD, 1, &prmMethod, &defMethod, &transferMethodMenu),
     PRM_Template(PRM_XYZ_J, 3, &prmGravity,      defGravity),
-    PRM_Template(PRM_TOGGLE, 1, &prmShowPart,   &defShowPart),
-    PRM_Template(PRM_TOGGLE, 1, &prmShowGrid,   &defShowGrid),
-    PRM_Template(PRM_TOGGLE, 1, &prmShowVec,    &defShowVec),
-    PRM_Template(PRM_TOGGLE, 1, &prmColorVel,   &defColorVel),
     PRM_Template()
 };
 
@@ -288,7 +272,7 @@ void SOP_ApicFluidSolver::buildCollisionSDF(const GU_Detail* collGeo) {
     const apic::Scalar dx = grid.dx();
     const apic::Vec3   orig = grid.origin();
 
-    // 26方向射线用普通float数组，避免静态UT_Vector3初始化问题
+    // Use float array for 26-ray directions to avoid static UT_Vector3 init issues
     static const float S2 = 0.70711f;
     static const float S3 = 0.57735f;
     static const float dirData[26][3] = {
@@ -312,7 +296,7 @@ void SOP_ApicFluidSolver::buildCollisionSDF(const GU_Detail* collGeo) {
                 const UT_Vector3 queryPt(
                     orig.x() + i * dx, orig.y() + j * dx, orig.z() + k * dx);
 
-                // 1. 26方向取最小命中距离（逼近无符号SDF）
+                // 1. 26‑direction min hit distance (unsigned SDF approximation).
                 float minDist = 1e6f;
                 for (int d = 0; d < 26; ++d) {
                     GU_RayInfo hitInfo;
@@ -325,7 +309,7 @@ void SOP_ApicFluidSolver::buildCollisionSDF(const GU_Detail* collGeo) {
                     }
                 }
 
-                // 2. 内外判断：+Y步进统计交点奇偶
+                // 2. +Y step parity test for inside/outside
                 int nhits = 0;
                 float tCur = 1e-4f;
                 for (int attempt = 0; attempt < 128 && tCur < 1e5f; ++attempt) {
